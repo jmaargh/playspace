@@ -45,7 +45,7 @@ fn starting_invalid() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let temp_path = temp_dir.path().to_owned();
     std::env::set_current_dir(&temp_path).expect("Failed to move to temp dir");
-    drop(temp_dir);
+    temp_dir.close().unwrap();
 
     // We've purposefully poisoned our CWD
     assert!(!temp_path.exists());

@@ -24,9 +24,31 @@ impl Playspace {
         Ok(Self::from_lock(MUTEX.lock())?)
     }
 
+    pub fn with_envs<I, K, V>(vars: I) -> Result<Self, SpaceError>
+    where
+        I: IntoIterator<Item = (K, Option<V>)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        let out = Self::new()?;
+        out.env_vars(vars);
+        Ok(out)
+    }
+
     pub fn try_new() -> Result<Self, SpaceError> {
         let lock = MUTEX.try_lock().ok_or(SpaceError::AlreadyInSpace)?;
         Ok(Self::from_lock(lock)?)
+    }
+
+    pub fn try_with_envs<I, K, V>(vars: I) -> Result<Self, SpaceError>
+    where
+        I: IntoIterator<Item = (K, Option<V>)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        let out = Self::try_new()?;
+        out.env_vars(vars);
+        Ok(out)
     }
 
     fn from_lock(lock: Lock) -> Result<Self, std::io::Error> {

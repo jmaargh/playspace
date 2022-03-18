@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
+    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -84,6 +85,43 @@ impl Playspace {
         }
     }
 
+    pub fn write_file<P, C>(&self, path: P, contents: C) -> Result<(), WriteError>
+    where
+        P: AsRef<Path>,
+        C: AsRef<[u8]>,
+    {
+        let canonical = self.playspace_path(path)?;
+        Ok(std::fs::write(canonical, contents)?)
+    }
+
+    pub fn create_file(&self, path: impl AsRef<Path>) -> Result<File, WriteError> {
+        let canonical = self.playspace_path(path)?;
+        Ok(std::fs::File::create(canonical)?)
+    }
+
+    fn playspace_path(&self, path: impl AsRef<Path>) -> Result<PathBuf, WriteError> {
+        if path.as_ref().is_relative() {
+            // Simple case, just assume it was meant to be relative to the of the space
+            Ok(self.directory().join(path))
+        } else {
+            // Ensure that the absolute path given is actually in the playspace
+            for ancestor in path.as_ref().ancestors() {
+                if ancestor.exists() {
+                    // Found a parent
+                    let canonical_ancestor = ancestor.canonicalize()?;
+                    if !canonical_ancestor.starts_with(self.directory().canonicalize()?) {
+                        // Not in the playspace
+                        return Err(WriteError::OutsidePlayspace(path.as_ref().into()));
+                    }
+                    return Ok(path.as_ref().into());
+                }
+            }
+
+            // Couldn't find a parent in the playspace
+            Err(WriteError::OutsidePlayspace(path.as_ref().into()))
+        }
+    }
+
     fn restore_directory(&self) {
         if let Some(working_dir) = &self.saved_current_dir {
             let _result = std::env::set_current_dir(working_dir);
@@ -116,6 +154,14 @@ pub enum SpaceError {
     StdIo(#[from] std::io::Error),
     #[error("Already in a Playspace")]
     AlreadyInSpace,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum WriteError {
+    #[error(transparent)]
+    StdIo(#[from] std::io::Error),
+    #[error("Attempt to write outside Playspace: {0}")]
+    OutsidePlayspace(PathBuf),
 }
 
 /// Type used to guarantee that locked are only creatable from this crate

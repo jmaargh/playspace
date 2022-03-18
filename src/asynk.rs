@@ -101,7 +101,7 @@ impl AsyncPlayspace {
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
     {
-        self.internal.set_envs(vars)
+        self.internal.set_envs(vars);
     }
 
     pub fn write_file<P, C>(&self, path: P, contents: C) -> Result<(), WriteError>

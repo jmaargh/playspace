@@ -39,6 +39,10 @@ fn new_temporary() {
     assert!(ending.exists());
 }
 
+// This test is disabled on Windows, because it's based on the premise of
+// deleting the working directory from under the process, but Windows explicitly
+// forbids this.
+#[cfg(not(target_os = "windows"))]
 #[test]
 #[serial]
 fn starting_invalid() {

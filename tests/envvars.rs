@@ -1,5 +1,6 @@
-use playspace::Playspace;
 use serial_test::serial;
+
+use playspace::Playspace;
 
 const ABSENT: &str = "SOME_ABSENT_ENVVAR";
 const PRESENT: &str = "SOME_PRESENT_ENVVAR";

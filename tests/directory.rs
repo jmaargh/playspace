@@ -62,4 +62,7 @@ fn starting_invalid() {
 
     drop(space2);
     assert!(std::env::current_dir().is_err());
+
+    // Tidy up to be nice to other tests
+    std::env::set_current_dir(std::env::var("CARGO_MANIFEST_DIR").unwrap()).unwrap();
 }

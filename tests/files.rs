@@ -71,3 +71,39 @@ fn bad_absolute_file() {
         Ok(_) => panic!("Should not have worked"),
     }
 }
+
+#[test]
+fn good_absolute_dir() {
+    let space = Playspace::new().expect("Failed to create playspace");
+
+    let mut path = std::env::current_dir().unwrap().canonicalize().unwrap();
+    path.push("some/new/dirs");
+    assert!(path.is_absolute());
+
+    space.create_dir_all(&path).unwrap();
+    space
+        .write_file(path.join("a_file.txt"), "some file contents")
+        .unwrap();
+    std::env::set_current_dir("some/new").unwrap();
+    let file_contents = std::fs::read_to_string("dirs/a_file.txt").unwrap();
+    assert_eq!(file_contents, "some file contents");
+
+    drop(space);
+
+    assert!(!path.exists());
+}
+
+#[test]
+fn bad_absolute_dir() {
+    let space = Playspace::new().expect("Failed to create playspace");
+
+    let path = Path::new("/tmp/playspace/some/nonsense/path");
+    assert!(!path.exists());
+
+    #[allow(clippy::match_wild_err_arm)]
+    match space.create_dir_all(path) {
+        Err(WriteError::OutsidePlayspace(_)) => (),
+        Err(_) => panic!("Wrong error"),
+        Ok(_) => panic!("Should not have worked"),
+    }
+}

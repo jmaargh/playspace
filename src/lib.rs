@@ -90,13 +90,18 @@ impl Playspace {
         P: AsRef<Path>,
         C: AsRef<[u8]>,
     {
-        let canonical = self.playspace_path(path)?;
-        Ok(std::fs::write(canonical, contents)?)
+        let path = self.playspace_path(path)?;
+        Ok(std::fs::write(path, contents)?)
     }
 
     pub fn create_file(&self, path: impl AsRef<Path>) -> Result<File, WriteError> {
-        let canonical = self.playspace_path(path)?;
-        Ok(std::fs::File::create(canonical)?)
+        let path = self.playspace_path(path)?;
+        Ok(std::fs::File::create(path)?)
+    }
+
+    pub fn create_dir_all(&self, path: impl AsRef<Path>) -> Result<(), WriteError> {
+        let path = self.playspace_path(path)?;
+        Ok(std::fs::create_dir_all(path)?)
     }
 
     fn playspace_path(&self, path: impl AsRef<Path>) -> Result<PathBuf, WriteError> {

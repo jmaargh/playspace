@@ -17,6 +17,12 @@ fn new_temporary() {
 
         assert_eq!(spaced, space.directory());
 
+        let spaced_canonical = spaced.canonicalize().expect("Failed to canonicalise");
+        let temp_canonical = std::env::temp_dir()
+            .canonicalize()
+            .expect("Failed to canonicalise temp dir");
+        assert!(spaced_canonical.starts_with(&temp_canonical));
+
         std::fs::create_dir("a_subdir").expect("Failed to create subdirectory");
         std::env::set_current_dir("a_subdir").expect("Failed to move to subdirectory");
         assert_ne!(std::env::current_dir().unwrap(), space.directory());

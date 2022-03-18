@@ -1,5 +1,6 @@
-use playspace::Playspace;
 use serial_test::serial;
+
+use playspace::Playspace;
 
 #[test]
 #[serial]

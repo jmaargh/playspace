@@ -1,21 +1,29 @@
 use std::path::{Path, PathBuf};
 
-use parking_lot::{const_mutex, Mutex, MutexGuard};
+use parking_lot::const_mutex;
 use tempfile::{tempdir, TempDir};
 
-static MUTEX: Mutex<()> = const_mutex(());
+static MUTEX: Mutex = const_mutex(LockType());
 
 pub struct Playspace {
-    _lock: MutexGuard<'static, ()>,
+    _lock: Lock,
     directory: TempDir,
     saved_current_dir: Option<PathBuf>,
 }
 
 impl Playspace {
-    #[must_use]
     pub fn new() -> Result<Self, SpaceError> {
+        Ok(Self::from_lock(MUTEX.lock())?)
+    }
+
+    pub fn try_new() -> Result<Self, SpaceError> {
+        let lock = MUTEX.try_lock().ok_or(SpaceError::AlreadyInSpace)?;
+        Ok(Self::from_lock(lock)?)
+    }
+
+    fn from_lock(lock: Lock) -> Result<Self, std::io::Error> {
         let out = Self {
-            _lock: MUTEX.lock(),
+            _lock: lock,
             directory: tempdir()?,
             saved_current_dir: std::env::current_dir().ok(),
         };
@@ -43,4 +51,11 @@ impl Drop for Playspace {
 pub enum SpaceError {
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
+    #[error("Already in a Playspace")]
+    AlreadyInSpace,
 }
+
+/// Type used to guarantee that locked are only creatable from this crate
+struct LockType();
+type Mutex = parking_lot::Mutex<LockType>;
+type Lock = parking_lot::MutexGuard<'static, LockType>;

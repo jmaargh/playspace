@@ -28,7 +28,7 @@ impl AsyncPlayspace {
         V: AsRef<OsStr>,
     {
         let out = Self::new().await?;
-        out.env_vars(vars);
+        out.set_envs(vars);
         Ok(out)
     }
 
@@ -44,7 +44,7 @@ impl AsyncPlayspace {
         V: AsRef<OsStr>,
     {
         let out = Self::try_new()?;
-        out.env_vars(vars);
+        out.set_envs(vars);
         Ok(out)
     }
 
@@ -61,13 +61,13 @@ impl AsyncPlayspace {
     }
 
     #[allow(clippy::unused_self)]
-    pub fn env_vars<I, K, V>(&self, vars: I)
+    pub fn set_envs<I, K, V>(&self, vars: I)
     where
         I: IntoIterator<Item = (K, Option<V>)>,
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
     {
-        self.internal.env_vars(vars)
+        self.internal.set_envs(vars)
     }
 
     pub fn write_file<P, C>(&self, path: P, contents: C) -> Result<(), WriteError>

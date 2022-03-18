@@ -63,7 +63,7 @@ fn multi_vars_syntax() {
 
     {
         let space = Playspace::new().expect("Failed to create space");
-        space.env_vars([
+        space.set_envs([
             (ABSENT, Some("absent_value")),
             (PRESENT, Some("present_value_during")),
             (TRANSIENT, None),

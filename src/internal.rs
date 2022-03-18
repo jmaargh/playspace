@@ -34,7 +34,7 @@ impl Internal {
     }
 
     #[allow(clippy::unused_self)]
-    pub(crate) fn env_vars<I, K, V>(&self, vars: I)
+    pub(crate) fn set_envs<I, K, V>(&self, vars: I)
     where
         I: IntoIterator<Item = (K, Option<V>)>,
         K: AsRef<OsStr>,

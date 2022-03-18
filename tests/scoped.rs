@@ -1,3 +1,5 @@
+#![cfg(feature = "sync")]
+
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use serial_test::serial;

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
 };
 
@@ -42,6 +42,21 @@ impl Playspace {
     #[allow(clippy::must_use_candidate)]
     pub fn directory(&self) -> &Path {
         self.directory.path()
+    }
+
+    #[allow(clippy::unused_self)]
+    pub fn env_vars<I, K, V>(&self, vars: I)
+    where
+        I: IntoIterator<Item = (K, Option<V>)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        for (key, value) in vars {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            };
+        }
     }
 
     fn restore_directory(&self) {

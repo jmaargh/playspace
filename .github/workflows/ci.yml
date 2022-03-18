@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  unit-test:
+    name: "${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    continue-on-error: false
+    runs-on: ${{ matrix.os.distro }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - { name: Linux, distro: ubuntu-latest }
+          - { name: Windows, distro: windows-latest }
+          - { name: macOS, distro: macOS-latest }
+        toolchain: [nightly, stable]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --lib --all-features
+
+  integration-test-sync:
+    name: "Sync ${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    continue-on-error: false
+    runs-on: ${{ matrix.os.distro }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - { name: Linux, distro: ubuntu-latest }
+          - { name: Windows, distro: windows-latest }
+          - { name: macOS, distro: macOS-latest }
+        toolchain: [nightly, stable]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --test "*" --no-default-features --features sync # https://github.com/rust-lang/cargo/issues/8396
+
+  integration-test-async:
+    name: "Async ${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    continue-on-error: false
+    runs-on: ${{ matrix.os.distro }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - { name: Linux, distro: ubuntu-latest }
+          - { name: Windows, distro: windows-latest }
+          - { name: macOS, distro: macOS-latest }
+        toolchain: [nightly, stable]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --test "*" --no-default-features --features async # https://github.com/rust-lang/cargo/issues/8396
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features -- -D warnings
+
+  coverage:
+    name: Code coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: --ignore-tests --all-features
+

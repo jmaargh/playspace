@@ -1,0 +1,41 @@
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.build]
+command = "cargo"
+args = ["build", "--all-features"]
+
+[tasks.format]
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.lint]
+command = "cargo"
+args = ["clippy", "--all-features", "--", "-D", "warnings"]
+
+[tasks.unit-test]
+command = "cargo"
+args = ["test", "--lib", "--all-features"]
+
+[tasks.integration-test-sync]
+command = "cargo"
+args = ["test", "--test", "*", "--no-default-features", "--features", "sync"]
+
+[tasks.integration-test-async]
+command = "cargo"
+args = ["test", "--test", "*", "--no-default-features", "--features", "async"]
+
+[tasks.coverage]
+command = "cargo"
+args = ["tarpaulin", "--ignore-tests", "--all-features"]
+
+[tasks.ci]
+dependencies = [
+  "format",
+  "lint",
+  "unit-test",
+  "integration-test-sync",
+  "integration-test-async",
+  "coverage",
+]

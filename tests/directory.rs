@@ -17,7 +17,7 @@ fn new_temporary() {
         assert_ne!(original, spaced);
         assert!(spaced.exists());
 
-        // MacOS seems to require that these be canonicalised?
+        // MacOS seems to require that these be canonicalised otherwise they don't compare equal
         assert_eq!(
             spaced.canonicalize().unwrap(),
             space.directory().canonicalize().unwrap()

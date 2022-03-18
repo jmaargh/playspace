@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-parking_lot = "0.12"
+parking_lot = { version = "0.12", features = ["send_guard"] }
 tempfile = "3.3"
 thiserror = "1.0"
+static_assertions = "1.1"
 
 [dev-dependencies]
 serial_test = "0.6"

@@ -5,6 +5,7 @@ use std::{
 };
 
 use parking_lot::const_mutex;
+use static_assertions::assert_impl_all;
 use tempfile::{tempdir, TempDir};
 
 static MUTEX: Mutex = const_mutex(LockType());
@@ -15,6 +16,8 @@ pub struct Playspace {
     saved_current_dir: Option<PathBuf>,
     saved_environment: HashMap<OsString, OsString>,
 }
+
+assert_impl_all!(Playspace: Send);
 
 impl Playspace {
     pub fn new() -> Result<Self, SpaceError> {

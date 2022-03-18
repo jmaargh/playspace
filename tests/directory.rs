@@ -17,7 +17,11 @@ fn new_temporary() {
         assert_ne!(original, spaced);
         assert!(spaced.exists());
 
-        assert_eq!(spaced, space.directory());
+        // MacOS seems to require that these be canonicalised?
+        assert_eq!(
+            spaced.canonicalize().unwrap(),
+            space.directory().canonicalize().unwrap()
+        );
 
         let spaced_canonical = spaced.canonicalize().expect("Failed to canonicalise");
         let temp_canonical = std::env::temp_dir()

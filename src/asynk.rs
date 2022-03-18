@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fs::File, path::Path};
+use std::{ffi::OsStr, fs::File, future::Future, path::Path, pin::Pin};
 
 use lazy_static::lazy_static;
 use static_assertions::assert_impl_all;
@@ -17,6 +17,40 @@ pub struct AsyncPlayspace {
 assert_impl_all!(AsyncPlayspace: Send);
 
 impl AsyncPlayspace {
+    // N.B. you need to `boxed()` your futures because of [this](https://stackoverflow.com/a/70539457) syntax issue
+    // ```
+    // Jail::with_async(|jail| {
+    //     async {
+    //         // Your code
+    //     }.boxed()
+    // });
+    // ```
+    pub async fn scoped<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
+    {
+        let mut space = Self::new().await?;
+
+        Ok(f(&mut space).await)
+    }
+
+    // N.B. you need to `boxed()` your futures because of [this](https://stackoverflow.com/a/70539457) syntax issue
+    // ```
+    // Jail::with_async(|jail| {
+    //     async {
+    //         // Your code
+    //     }.boxed()
+    // });
+    // ```
+    pub async fn expect_scoped<R, F>(f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
+    {
+        let mut space = Self::new().await.expect("Failed to create playspace");
+
+        f(&mut space).await
+    }
+
     pub async fn new() -> Result<Self, SpaceError> {
         Ok(Self::from_lock(MUTEX.lock().await)?)
     }

@@ -3,11 +3,18 @@ name = "playspace"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["sync"]
+sync = ["parking_lot"]
+async = ["async-mutex"]
+
 [dependencies]
-parking_lot = { version = "0.12", features = ["send_guard"] }
+parking_lot = { version = "0.12", features = ["send_guard"], optional = true }
 tempfile = "3.3"
 thiserror = "1.0"
 static_assertions = "1.1"
+async-mutex = { version = "1.4", optional = true }
+lazy_static = { version = "1.4", optional = true }
 
 [dev-dependencies]
 serial_test = "0.6"

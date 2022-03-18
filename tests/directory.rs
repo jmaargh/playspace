@@ -1,12 +1,14 @@
 use playspace::Playspace;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn new_temporary() {
     let original = std::env::current_dir().expect("Invalid starting dir");
     assert!(original.exists());
 
     {
-        let space = Playspace::default();
+        let space = Playspace::new().expect("Failed to create space");
 
         let spaced = std::env::current_dir().expect("Invalid spaced dir");
         assert_ne!(original, spaced);
@@ -24,4 +26,33 @@ fn new_temporary() {
     assert!(ending.exists());
 }
 
-fn starting_invalid() {}
+#[test]
+#[serial]
+fn starting_invalid() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let temp_path = temp_dir.path().to_owned();
+    std::env::set_current_dir(&temp_path).expect("Failed to move to temp dir");
+    drop(temp_dir);
+
+    // We've purposefully poisoned our CWD
+    assert!(!temp_path.exists());
+    assert!(std::env::current_dir().is_err());
+
+    let space = Playspace::new().expect("Failed to create space");
+
+    let spaced_cwd = std::env::current_dir().expect("Failed to get spaced CWD");
+    assert!(spaced_cwd.exists());
+    assert_ne!(temp_path, spaced_cwd);
+
+    drop(space);
+
+    assert!(std::env::current_dir().is_err());
+
+    let space2 = Playspace::new().expect("Failed to create second space");
+    let spaced_cwd = std::env::current_dir().expect("Failed to get spaced CWD");
+    assert!(spaced_cwd.exists());
+    assert_ne!(temp_path, spaced_cwd);
+
+    drop(space2);
+    assert!(std::env::current_dir().is_err());
+}

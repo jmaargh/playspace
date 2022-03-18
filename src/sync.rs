@@ -15,6 +15,24 @@ pub struct Playspace {
 assert_impl_all!(Playspace: Send);
 
 impl Playspace {
+    pub fn scoped<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let mut space = Self::new()?;
+
+        Ok(f(&mut space))
+    }
+
+    pub fn expect_scoped<R, F>(f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let mut space = Self::new().expect("Failed to create playspace");
+
+        f(&mut space)
+    }
+
     pub fn new() -> Result<Self, SpaceError> {
         Ok(Self::from_lock(MUTEX.lock())?)
     }

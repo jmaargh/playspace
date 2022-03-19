@@ -6,19 +6,24 @@ edition = "2021"
 [features]
 default = ["sync"]
 sync = ["parking_lot"]
-async = ["async-mutex", "lazy_static"]
+async = ["tokio"]
 
 [dependencies]
 parking_lot = { version = "0.12", features = ["send_guard"], optional = true }
 tempfile = "3.3"
 thiserror = "1.0"
 static_assertions = "1.1"
-async-mutex = { version = "1.4", optional = true }
-lazy_static = { version = "1.4", optional = true }
+# N.B. `tokio` is only used for `tokio::sync::Mutex`. The crate does not
+# depend on the tokio runtime at all and can be used in other runtimes.
+tokio = { version = "1.17", default_features = false, features = [
+  "sync",
+  "parking_lot"
+], optional = true }
 
 [dev-dependencies]
 serial_test = "0.6"
 tokio = { version = "1", features = ["macros", "rt", "fs", "sync", "time"] }
 async-std = { version = "1", features = ["attributes"] }
 futures = "0.3"
+lazy_static = "1.4"
 parking_lot = { version = "0.12", features = ["send_guard"] }

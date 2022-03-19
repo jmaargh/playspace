@@ -9,7 +9,6 @@ use std::{
 };
 
 use futures::FutureExt;
-use lazy_static::lazy_static;
 use parking_lot::Mutex;
 
 use playspace::AsyncPlayspace;
@@ -18,9 +17,7 @@ const ABSENT: &str = "SOME_ABSENT_ENVVAR";
 const PRESENT: &str = "SOME_PRESENT_ENVVAR";
 const TRANSIENT: &str = "SOME_TRANSIENT_ENVVAR";
 
-lazy_static! {
-    static ref SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::new(());
-}
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn set_vars_before() {
     std::env::remove_var(ABSENT);

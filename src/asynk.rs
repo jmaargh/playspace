@@ -1,14 +1,11 @@
 use std::{ffi::OsStr, fs::File, future::Future, path::Path, pin::Pin};
 
-use lazy_static::lazy_static;
 use static_assertions::assert_impl_all;
 
 use crate::{internal::Internal, SpaceError, WriteError};
 
-lazy_static! {
 // FIXME: should also prevent creating a sync playspace in an async one and vice versa
-    static ref MUTEX: Mutex = Mutex::new(LockType());
-}
+static MUTEX: Mutex = Mutex::const_new(LockType());
 
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 pub struct AsyncPlayspace {
@@ -69,7 +66,7 @@ impl AsyncPlayspace {
     }
 
     pub fn try_new() -> Result<Self, SpaceError> {
-        let lock = MUTEX.try_lock().ok_or(SpaceError::AlreadyInSpace)?;
+        let lock = MUTEX.try_lock().map_err(|_| SpaceError::AlreadyInSpace)?;
         Ok(Self::from_lock(lock)?)
     }
 
@@ -126,5 +123,5 @@ impl AsyncPlayspace {
 
 /// Type used to guarantee that locked are only creatable from this crate
 struct LockType();
-type Mutex = async_mutex::Mutex<LockType>;
-type Lock = async_mutex::MutexGuard<'static, LockType>;
+type Mutex = tokio::sync::Mutex<LockType>;
+type Lock = tokio::sync::MutexGuard<'static, LockType>;

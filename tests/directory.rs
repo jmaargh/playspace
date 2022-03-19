@@ -17,7 +17,11 @@ fn new_temporary() {
         assert_ne!(original, spaced);
         assert!(spaced.exists());
 
-        assert_eq!(spaced, space.directory());
+        // MacOS seems to require that these be canonicalised otherwise they don't compare equal
+        assert_eq!(
+            spaced.canonicalize().unwrap(),
+            space.directory().canonicalize().unwrap()
+        );
 
         let spaced_canonical = spaced.canonicalize().expect("Failed to canonicalise");
         let temp_canonical = std::env::temp_dir()
@@ -35,13 +39,17 @@ fn new_temporary() {
     assert!(ending.exists());
 }
 
+// This test is disabled on Windows, because it's based on the premise of
+// deleting the working directory from under the process, but Windows explicitly
+// forbids this.
+#[cfg(not(target_os = "windows"))]
 #[test]
 #[serial]
 fn starting_invalid() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let temp_path = temp_dir.path().to_owned();
     std::env::set_current_dir(&temp_path).expect("Failed to move to temp dir");
-    drop(temp_dir);
+    temp_dir.close().unwrap();
 
     // We've purposefully poisoned our CWD
     assert!(!temp_path.exists());

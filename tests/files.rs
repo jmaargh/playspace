@@ -63,7 +63,8 @@ fn good_absolute_file() {
 fn bad_absolute_file() {
     let space = Playspace::new().expect("Failed to create playspace");
 
-    let path = Path::new("/tmp/playspace/some/nonsense/path.txt");
+    let mut path = std::env::temp_dir();
+    path.extend(["playspace", "some", "nonsense", "path.txt"]);
     assert!(!path.exists());
 
     #[allow(clippy::match_wild_err_arm)]

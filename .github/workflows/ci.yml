@@ -11,7 +11,7 @@ env:
 
 jobs:
   unit-test:
-    name: "${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    name: "Unit test: ${{ matrix.os.name }} (${{ matrix.toolchain }})"
     continue-on-error: false
     runs-on: ${{ matrix.os.distro }}
 
@@ -42,7 +42,7 @@ jobs:
           args: --lib --all-features
 
   integration-test-sync:
-    name: "Sync ${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    name: "Sync Integration test ${{ matrix.os.name }} (${{ matrix.toolchain }})"
     continue-on-error: false
     runs-on: ${{ matrix.os.distro }}
 
@@ -73,7 +73,7 @@ jobs:
           args: --test "*" --no-default-features --features sync # https://github.com/rust-lang/cargo/issues/8396
 
   integration-test-async:
-    name: "Async ${{ matrix.os.name }} ${{ matrix.test.name }} (${{ matrix.toolchain }})"
+    name: "Async Integration test  ${{ matrix.os.name }} (${{ matrix.toolchain }})"
     continue-on-error: false
     runs-on: ${{ matrix.os.distro }}
 

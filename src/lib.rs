@@ -18,6 +18,7 @@
 //! - Hard guarantees on abusing multiple Playspaces at a time
 //!
 //! ```rust
+//! # use playspace::Playspace;
 //! Playspace::scoped(|space| {
 //!     space.set_envs([
 //!         ("APP_SPECIFIC_OPTION", Some("some-value")), // Set a variable

@@ -2,10 +2,11 @@ use std::{ffi::OsStr, fs::File, future::Future, path::Path, pin::Pin};
 
 use static_assertions::assert_impl_all;
 
-use crate::{internal::Internal, SpaceError, WriteError};
-
-// FIXME: should also prevent creating a sync playspace in an async one and vice versa
-static MUTEX: Mutex = Mutex::const_new(LockType());
+use crate::{
+    internal::Internal,
+    mutex::{Lock, MUTEX},
+    SpaceError, WriteError,
+};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 pub struct AsyncPlayspace {
@@ -120,8 +121,3 @@ impl AsyncPlayspace {
         self.internal.create_dir_all(path)
     }
 }
-
-/// Type used to guarantee that locked are only creatable from this crate
-struct LockType();
-type Mutex = tokio::sync::Mutex<LockType>;
-type Lock = tokio::sync::MutexGuard<'static, LockType>;

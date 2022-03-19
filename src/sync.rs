@@ -1,12 +1,12 @@
 use std::{ffi::OsStr, fs::File, path::Path};
 
-use parking_lot::const_mutex;
 use static_assertions::assert_impl_all;
 
-use crate::{internal::Internal, SpaceError, WriteError};
-
-// FIXME: should also prevent creating a sync playspace in an async one and vice versa
-static MUTEX: Mutex = const_mutex(LockType());
+use crate::{
+    internal::Internal,
+    mutex::{blocking_lock, try_lock, Lock},
+    SpaceError, WriteError,
+};
 
 #[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
 pub struct Playspace {
@@ -36,7 +36,7 @@ impl Playspace {
     }
 
     pub fn new() -> Result<Self, SpaceError> {
-        Ok(Self::from_lock(MUTEX.lock())?)
+        Ok(Self::from_lock(blocking_lock())?)
     }
 
     pub fn with_envs<I, K, V>(vars: I) -> Result<Self, SpaceError>
@@ -51,7 +51,7 @@ impl Playspace {
     }
 
     pub fn try_new() -> Result<Self, SpaceError> {
-        let lock = MUTEX.try_lock().ok_or(SpaceError::AlreadyInSpace)?;
+        let lock = try_lock().ok_or(SpaceError::AlreadyInSpace)?;
         Ok(Self::from_lock(lock)?)
     }
 
@@ -105,8 +105,3 @@ impl Playspace {
         self.internal.create_dir_all(path)
     }
 }
-
-/// Type used to guarantee that locked are only creatable from this crate
-struct LockType();
-type Mutex = parking_lot::Mutex<LockType>;
-type Lock = parking_lot::MutexGuard<'static, LockType>;

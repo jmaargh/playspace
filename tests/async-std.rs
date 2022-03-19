@@ -69,15 +69,14 @@ async fn files_and_envs() {
                 (PRESENT, Some("present_value_during")),
             ]);
 
+            let mut path_during = path_during.lock();
             space
-                .write_file(&*path_during.lock(), "some file contents")
+                .write_file(&*path_during, "some file contents")
                 .unwrap();
-            *path_during.lock() = space.directory().join("some_file.txt");
+            *path_during = space.directory().join("some_file.txt");
 
             assert_eq!(
-                async_std::fs::read_to_string(&*path_during.lock())
-                    .await
-                    .unwrap(),
+                async_std::fs::read_to_string(&*path_during).await.unwrap(),
                 "some file contents"
             );
 

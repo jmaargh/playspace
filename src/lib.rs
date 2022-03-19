@@ -18,6 +18,8 @@
 //! - Hard guarantees on abusing multiple Playspaces at a time
 //!
 //! ```rust
+//! # #[cfg(feature = "sync")]
+//! # {
 //! # use playspace::Playspace;
 //! Playspace::scoped(|space| {
 //!     space.set_envs([
@@ -38,6 +40,7 @@
 //! }).expect("Failed to create playspace");
 //!
 //! // Now your environment is back where we started
+//! # }
 //! ```
 //!
 //! The public API exists in two flavours: [`Playspace`] and [`AsyncPlayspace`].
@@ -61,6 +64,7 @@ use std::path::PathBuf;
 #[cfg(feature = "async")]
 mod asynk;
 mod internal;
+mod mutex;
 #[cfg(feature = "sync")]
 mod sync;
 

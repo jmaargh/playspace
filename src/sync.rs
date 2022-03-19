@@ -5,8 +5,10 @@ use static_assertions::assert_impl_all;
 
 use crate::{internal::Internal, SpaceError, WriteError};
 
+// FIXME: should also prevent creating a sync playspace in an async one and vice versa
 static MUTEX: Mutex = const_mutex(LockType());
 
+#[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
 pub struct Playspace {
     _lock: Lock, // NB. for drop order this MUST appear first
     internal: Internal,

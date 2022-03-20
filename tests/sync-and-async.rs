@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc,

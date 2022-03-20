@@ -103,6 +103,10 @@ fn bad_absolute_dir() {
     #[cfg(target_os = "windows")]
     let path = Path::new("\\Windows\\Temp\\playspace\\some\\nonsense\\path");
     assert!(!path.exists());
+    assert!(path.is_absolute());
+
+    println!("Playspace: {}", space.directory().display());
+    println!("Path: {}", path.display());
 
     #[allow(clippy::match_wild_err_arm)]
     match space.create_dir_all(path) {

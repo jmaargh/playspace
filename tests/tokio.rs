@@ -11,7 +11,7 @@ use std::{
 use futures::FutureExt;
 use parking_lot::Mutex;
 
-use playspace::AsyncPlayspace;
+use playspace::Playspace;
 
 const ABSENT: &str = "SOME_ABSENT_ENVVAR";
 const PRESENT: &str = "SOME_PRESENT_ENVVAR";
@@ -59,7 +59,7 @@ async fn files_and_envs() {
     let path = Arc::new(Mutex::new(PathBuf::from("some_file.txt")));
     let path_during = path.clone();
 
-    AsyncPlayspace::expect_scoped(move |space| {
+    Playspace::scoped_async(move |space| {
         async move {
             space.set_envs([
                 (ABSENT, Some("absent_value")),
@@ -84,7 +84,8 @@ async fn files_and_envs() {
         }
         .boxed()
     })
-    .await;
+    .await
+    .unwrap();
 
     assert!(!path.lock().exists());
 
@@ -95,7 +96,9 @@ async fn files_and_envs() {
 async fn wait_when_spaced() {
     let _serial = SERIAL.lock().await;
 
-    let space1 = AsyncPlayspace::new().await.expect("Failed to create space");
+    let space1 = Playspace::new_async()
+        .await
+        .expect("Failed to create space");
 
     let counter1 = Arc::new(AtomicU32::new(0));
     let counter2 = counter1.clone();
@@ -107,7 +110,7 @@ async fn wait_when_spaced() {
         assert_eq!(counter2.load(Ordering::Acquire), 0);
         tokio::task::yield_now().await;
 
-        let _space2 = AsyncPlayspace::new()
+        let _space2 = Playspace::new_async()
             .await
             .expect("Failed to create second space"); // We're testing that this blocks ...
 

@@ -1,4 +1,4 @@
-#![cfg(all(feature = "async", feature = "sync"))]
+#![cfg(all(feature = "async"))]
 
 use std::sync::{
     atomic::{AtomicU32, Ordering},
@@ -6,7 +6,7 @@ use std::sync::{
 };
 
 use lazy_static::lazy_static;
-use playspace::{AsyncPlayspace, Playspace};
+use playspace::Playspace;
 
 lazy_static! {
     static ref SERIAL: async_std::sync::Mutex<()> = async_std::sync::Mutex::new(());
@@ -20,7 +20,7 @@ async fn async_blocks_sync() {
     let counter2 = counter1.clone();
 
     std::env::remove_var("SOME_VAR");
-    let async_space = AsyncPlayspace::with_envs([("SOME_VAR", Some("some value"))])
+    let async_space = Playspace::with_envs_async([("SOME_VAR", Some("some value"))])
         .await
         .unwrap();
     assert_eq!(std::env::var("SOME_VAR").unwrap(), "some value");
@@ -70,11 +70,11 @@ async fn sync_blocks_async() {
 
     let sync_space = Playspace::new().unwrap();
 
-    async_std::task::spawn(async move {
+    let handle = async_std::task::spawn(async move {
         assert_eq!(counter2.load(Ordering::Acquire), 0);
         std::thread::yield_now();
 
-        let _async_space = AsyncPlayspace::new().await.unwrap(); // We're testing that this blocks ...
+        let _async_space = Playspace::new_async().await.unwrap(); // We're testing that this blocks ...
 
         assert_eq!(counter2.load(Ordering::Acquire), 2);
 
@@ -101,5 +101,6 @@ async fn sync_blocks_async() {
 
     drop(sync_space); // ... until this
 
+    handle.await;
     assert_eq!(counter1.load(Ordering::Acquire), 4);
 }

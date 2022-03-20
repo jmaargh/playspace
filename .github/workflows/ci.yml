@@ -70,7 +70,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --test "*" --no-default-features --features sync # https://github.com/rust-lang/cargo/issues/8396
+          args: --test "*"
 
   integration-test-async:
     name: "Async Integration test  ${{ matrix.os.name }} (${{ matrix.toolchain }})"
@@ -101,7 +101,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --test "*" --no-default-features --features async # https://github.com/rust-lang/cargo/issues/8396
+          args: --test "*" --features async
 
   fmt:
     name: Rustfmt

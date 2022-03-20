@@ -13,12 +13,10 @@ exclude = [".github/"]
 publish = false
 
 [features]
-default = ["sync"]
-sync = ["parking_lot"]
 async = ["tokio"]
 
 [dependencies]
-parking_lot = { version = "0.12", features = ["send_guard"], optional = true }
+parking_lot = { version = "0.12", features = ["send_guard"] }
 tempfile = "3.3"
 thiserror = "1.0"
 static_assertions = "1.1"

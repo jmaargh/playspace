@@ -1,5 +1,3 @@
-#![cfg(feature = "sync")]
-
 use std::{io::Write, path::Path};
 
 use playspace::{Playspace, WriteError};

@@ -28,11 +28,11 @@ args = ["test", "--doc", "--all-features"]
 
 [tasks.integration-test-sync]
 command = "cargo"
-args = ["test", "--test", "*", "--no-default-features", "--features", "sync"]
+args = ["test", "--test", "*"]
 
 [tasks.integration-test-async]
 command = "cargo"
-args = ["test", "--test", "*", "--no-default-features", "--features", "async"]
+args = ["test", "--test", "*", "--features", "async"]
 
 [tasks.coverage]
 command = "cargo"

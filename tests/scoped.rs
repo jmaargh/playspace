@@ -1,5 +1,3 @@
-#![cfg(feature = "sync")]
-
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use serial_test::serial;
@@ -63,7 +61,7 @@ fn files_and_envs() {
     let path = Rc::new(RefCell::new(PathBuf::from("some_file.txt")));
     let path_during = path.clone();
 
-    Playspace::expect_scoped(move |space| {
+    Playspace::scoped(move |space| {
         space.set_envs([
             (ABSENT, Some("absent_value")),
             (PRESENT, Some("present_value_during")),
@@ -82,7 +80,8 @@ fn files_and_envs() {
         space.set_envs([(TRANSIENT, Option::<&str>::None)]);
 
         assert_envs_inside();
-    });
+    })
+    .unwrap();
 
     assert!(!path.borrow().exists());
 

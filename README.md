@@ -41,19 +41,20 @@ The [docs][docs] are your friend for more details on what it does and how it wor
  - Clean up for any files you create in that directory while in the Playspace
  - Checkpoint and restore all environment variables on entering/leaving the Playspace
  - Some basic protection against accidentally entering more than one Playspace
+ - Runtime-independent async support
 
-For a non-async codebase:
+Put this in your `Cargo.toml`:
 
 ```toml
 [dependencies]
 playspace = "1"
 ```
 
-For async codebase you probably want:
+or this if you use async in your code:
 
 ```toml
 [dependencies]
-playspace = { version = "1", default-features = false, features = ["async"] }
+playspace = { version = "1", features = ["async"] }
 ```
 
 For mixed, leave in the default features.

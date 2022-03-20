@@ -1,5 +1,3 @@
-#![cfg(feature = "sync")]
-
 use serial_test::serial;
 
 use playspace::Playspace;
@@ -85,26 +83,6 @@ fn with_envs() {
 
     {
         let _space = Playspace::with_envs([
-            (ABSENT, Some("absent_value")),
-            (PRESENT, Some("present_value_during")),
-            (TRANSIENT, None),
-        ])
-        .expect("Failed to create space");
-
-        assert_envs_inside();
-    }
-
-    assert_envs_outside();
-}
-
-#[test]
-#[serial]
-fn try_with_envs() {
-    set_vars_before();
-    assert_envs_outside();
-
-    {
-        let _space = Playspace::try_with_envs([
             (ABSENT, Some("absent_value")),
             (PRESENT, Some("present_value_during")),
             (TRANSIENT, None),

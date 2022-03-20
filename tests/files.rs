@@ -98,7 +98,10 @@ fn good_absolute_dir() {
 fn bad_absolute_dir() {
     let space = Playspace::new().expect("Failed to create playspace");
 
+    #[cfg(not(target_os = "windows"))]
     let path = Path::new("/tmp/playspace/some/nonsense/path");
+    #[cfg(target_os = "windows")]
+    let path = Path::new("\\Windows\\Temp\\playspace\\some\\nonsense\\path");
     assert!(!path.exists());
 
     #[allow(clippy::match_wild_err_arm)]

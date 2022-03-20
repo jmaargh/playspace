@@ -56,10 +56,10 @@ use crate::{
 /// assert!(!path.exists());
 ///
 /// let path2 = path.clone();
-/// let space = Playspace::scoped(move |space| {
+/// Playspace::scoped(move |space| {
 ///     println!("Now in directory: {}", space.directory().display());
 ///     
-///     space.write_file(&path2, "file contents");
+///     space.write_file(&path2, "file contents").unwrap();
 ///     assert_eq!(std::fs::read_to_string(&path2).unwrap(), "file contents");
 /// }).unwrap();
 ///
@@ -77,7 +77,7 @@ pub struct Playspace {
 assert_impl_all!(Playspace: Send);
 
 impl Playspace {
-    /// Create a Playspace available _only_ scoped within the given closure.
+    /// Create a `Playspace` available _only_ scoped within the given closure.
     ///
     /// Takes a closure, which accepts a `&mut Playspace`. Returns whatever the
     /// closure returns. The semantics of Playspace construction are the same
@@ -85,7 +85,7 @@ impl Playspace {
     ///
     /// # Blocks
     ///
-    /// Blocks until the current process is not in an Playspace. May deadlock
+    /// Blocks until the current process is not in a Playspace. May deadlock
     /// if called from a thread holding a `Playspace`.
     ///
     /// # Errors
@@ -110,7 +110,7 @@ impl Playspace {
         Ok(f(&mut space))
     }
 
-    /// Create a Playspace available _only_ scoped within the given closure,
+    /// Create a `Playspace` available _only_ scoped within the given closure,
     /// and don't care about errors.
     ///
     /// Equivalent to [`Playspace::scoped(...).expect(...)`][Playspace::scoped].
@@ -123,12 +123,12 @@ impl Playspace {
         f(&mut space)
     }
 
-    /// Create a Playspace for use as an RAII-guard.
+    /// Create a `Playspace` for use as an RAII-guard.
     ///
     /// # Blocks
     ///
-    /// Blocks until the current process is not in an Playspace. May deadlock
-    /// if called from a thread holding a `Playspace`.
+    /// Blocks until the current process is not in a Playspace. May deadlock
+    /// if called from a thread holding a `Playspace` or `AsyncPlayspace`.
     ///
     /// # Errors
     ///
@@ -160,8 +160,8 @@ impl Playspace {
         Ok(out)
     }
 
-    /// Create a Playspace for use as an RAII-guard, do not block if already in
-    /// a Playspace.
+    /// Create a `Playspace` for use as an RAII-guard, do not block if already
+    /// in a Playspace.
     ///
     /// # Errors
     ///

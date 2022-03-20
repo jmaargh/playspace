@@ -1,4 +1,4 @@
-#![cfg(feature = "async")]
+#![cfg(all(feature = "async", feature = "sync"))]
 
 use std::sync::{
     atomic::{AtomicU32, Ordering},

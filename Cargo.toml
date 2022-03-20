@@ -1,7 +1,16 @@
 [package]
 name = "playspace"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["jmaargh <jmaargh@gmail.com>"]
 edition = "2021"
+description = "Simple pseudo-sandbox for your convenience"
+readme = "README.md"
+repository = "https://github.com/jmaargh/playspace/"
+license = "MIT OR Apache-2.0"
+keywords = ["sandbox", "isolation", "test", "environment"]
+categories = ["development-tools::testing", "filesystem"]
+exclude = [".github/"]
+publish = false
 
 [features]
 default = ["sync"]

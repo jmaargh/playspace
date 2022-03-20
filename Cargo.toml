@@ -22,7 +22,9 @@ thiserror = "1.0"
 static_assertions = "1.1"
 # N.B. `tokio` is only used for `tokio::sync::Mutex`. The crate does not
 # depend on the tokio runtime at all and can be used in other runtimes.
-tokio = { version = "1.17", default_features = false, features = [
+# It's important to not be opinionated about tokio version to ensure maximum
+# compatibility with clients.
+tokio = { version = "1", default_features = false, features = [
   "sync",
   "parking_lot"
 ], optional = true }

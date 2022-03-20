@@ -1,3 +1,6 @@
+//  SPDX-License-Identifier: MIT OR Apache-2.0
+//  Licensed under either MIT Apache 2.0 licenses (attached), at your option.
+
 use std::{ffi::OsStr, fs::File, future::Future, path::Path, pin::Pin};
 
 use static_assertions::assert_impl_all;

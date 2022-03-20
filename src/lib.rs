@@ -1,4 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+//  SPDX-License-Identifier: MIT OR Apache-2.0
+//  Licensed under either MIT Apache 2.0 licenses (attached), at your option.
 
 //! Simple pseudo-sandbox for your convenience.
 //!

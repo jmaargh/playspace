@@ -101,7 +101,7 @@ fn bad_absolute_dir() {
     #[cfg(not(target_os = "windows"))]
     let path = Path::new("/tmp/playspace/some/nonsense/path");
     #[cfg(target_os = "windows")]
-    let path = Path::new("\\Windows\\Temp\\playspace\\some\\nonsense\\path");
+    let path = Path::new("C:\\Windows\\Temp\\playspace\\some\\nonsense\\path");
     assert!(!path.exists());
     assert!(path.is_absolute());
 

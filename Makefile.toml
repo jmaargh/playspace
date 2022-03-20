@@ -22,6 +22,10 @@ args = ["test", "--all-features"]
 command = "cargo"
 args = ["test", "--lib", "--all-features"]
 
+[tasks.doc-test]
+command = "cargo"
+args = ["test", "--doc", "--all-features"]
+
 [tasks.integration-test-sync]
 command = "cargo"
 args = ["test", "--test", "*", "--no-default-features", "--features", "sync"]
@@ -44,7 +48,9 @@ dependencies = [
   "format",
   "lint",
   "unit-test",
+  "doc-test",
   "integration-test-sync",
   "integration-test-async",
-  "coverage",
+  # "coverage",
+
 ]

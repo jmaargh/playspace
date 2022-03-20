@@ -30,14 +30,12 @@ mod internal {
 
 #[cfg(feature = "async")]
 mod internal {
-    use tokio_mutex as tm;
-
     use super::LockType;
 
     pub(crate) static MUTEX: Mutex = Mutex::const_new(LockType());
 
-    pub(crate) type Mutex = tm::sync::Mutex<LockType>;
-    pub(crate) type Lock = tm::sync::MutexGuard<'static, LockType>;
+    pub(crate) type Mutex = tokio::sync::Mutex<LockType>;
+    pub(crate) type Lock = tokio::sync::MutexGuard<'static, LockType>;
 
     #[inline]
     pub(crate) fn blocking_lock() -> Lock {

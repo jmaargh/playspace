@@ -10,7 +10,6 @@ use std::{
 
 use futures::FutureExt;
 use parking_lot::Mutex;
-use tokio_mutex as tokio;
 
 use playspace::Playspace;
 

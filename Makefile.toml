@@ -43,6 +43,10 @@ command = "cargo"
 toolchain = "nightly"
 args = ["rustdoc", "--open", "--all-features", "--", "--cfg", "docsrs"]
 
+[tasks.audit]
+command = "cargo"
+args = ["audit"]
+
 [tasks.ci]
 dependencies = [
   "format",
@@ -51,6 +55,7 @@ dependencies = [
   "doc-test",
   "integration-test-sync",
   "integration-test-async",
+  "audit",
   # "coverage",
 
 ]

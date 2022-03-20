@@ -145,12 +145,6 @@ jobs:
     name: Audit
     runs-on: ubuntu-latest
 
-    on:
-      push:
-        paths: ["**/Cargo.toml"]
-      pull_request:
-        paths: ["**/Cargo.toml"]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v2

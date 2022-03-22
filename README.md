@@ -30,7 +30,7 @@ Playspace::scoped(|space| {
 
     // Run some command that needs these resources...
 
-}).expect("Failed to create playspace");
+}).expect("Failed to create or destroy playspace");
 
 // Now your environment is back where we started
 ```

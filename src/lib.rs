@@ -260,6 +260,44 @@ impl Playspace {
         Ok(out)
     }
 
+    /// A scoped Playspace that doesn't block if already in one.
+    ///
+    /// Behaves exactly like [`scoped`][Playspace::scoped], but never blocks and
+    /// already being in a Playspace is an error.
+    ///
+    /// In async code, use [`try_scoped_async`][Playspace::try_scoped_async].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpaceError::AlreadyInSpace`] if already in a Playspace,
+    /// [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace; use playspace::SpaceError::AlreadyInSpace;
+    /// match Playspace::try_scoped(|space| {
+    ///     space.write_file("some_file.txt", "file contents");
+    ///     std::fs::read_to_string("some_file.txt").unwrap()
+    /// }) {
+    ///     Err(AlreadyInSpace) => { /* already in a playspace */ },
+    ///     Err(_) => { /* another error */ },
+    ///     Ok(file_contents) => { /* success */ },
+    /// }
+    /// ```
+    pub fn try_scoped<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let mut space = Self::try_new()?;
+        let out = f(&mut space);
+        space.exit()?;
+
+        Ok(out)
+    }
+
     /// Convenience combination of [`scoped`][Playspace::scoped] with implicit
     /// [`set_envs`][Playspace::set_envs].
     ///
@@ -651,6 +689,47 @@ impl Playspace {
         F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
     {
         let mut space = Self::new_async().await?;
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
+    }
+
+    /// An async-scoped Playspace that doesn't wait if already in one. Async
+    /// version of [`try_scoped`][Playspace::try_scoped].
+    ///
+    /// Behaves exactly like [`scoped_async`][Playspace::scoped_async], but
+    /// never waits and already being in a Playspace is an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpaceError::AlreadyInSpace`] if already in a Playspace,
+    /// [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace; use playspace::SpaceError::AlreadyInSpace; use futures::FutureExt;
+    /// # async {
+    /// match Playspace::try_scoped_async(|space| {
+    ///     async {
+    ///         space.write_file("some_file.txt", "file contents");
+    ///         std::fs::read_to_string("some_file.txt").unwrap()
+    ///     }.boxed()
+    /// }).await {
+    ///     Err(AlreadyInSpace) => { /* already in a playspace */ },
+    ///     Err(_) => { /* another error */ },
+    ///     Ok(file_contents) => { /* success */ },
+    /// }
+    /// # };
+    /// ```
+    pub async fn try_scoped_async<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
+    {
+        let mut space = Self::try_new()?;
         let out = f(&mut space).await;
         space.exit()?;
 

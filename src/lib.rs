@@ -8,7 +8,7 @@
 //! variables. Maybe you'll come up with more creative uses too, you're clever
 //! people. It's a convenience library with no hard guarantees.
 //!
-//! # Scope
+//! # Aims
 //!
 //! The Playspace pseudo-sandboxes **do** provide:
 //! - A new, empty, temporary working directory and return to your previous one when done
@@ -43,7 +43,7 @@
 //!
 //!     // Run some command that needs these resources...
 //!
-//! }).expect("Failed to create playspace");
+//! }).expect("Failed to create or exit playspace");
 //!
 //! // Now your environment is back where we started
 //! # }
@@ -66,8 +66,8 @@
 //!
 //! An application is considered "in" a Playspace when a [`Playspace`] object
 //! exists. Depending on how they are created, trying to enter a Playspace when
-//! already in one with either [block][Playspace::new], [wait the async task][Playspace::async_new],
-//! or [error][Playspace::try_new].
+//! already in one with either [block][Playspace::scoped], [wait the async task][Playspace::scoped_async],
+//! or [error][Playspace::try_scoped].
 //!
 //! When used in tests, this conveniently stops tests that create and destroy
 //! files from interacting, even when run concurrently.
@@ -90,7 +90,9 @@
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
+    fmt::Display,
     fs::File,
+    mem::ManuallyDrop,
     path::{Path, PathBuf},
 };
 #[cfg(feature = "async")]
@@ -106,44 +108,14 @@ use tempfile::{tempdir, TempDir};
 
 /// Playspace, while the object exists you are "in" the playspace.
 ///
-/// You can either use as an RAII-guard (similar to [`MutexGuard`][MutexGuard]), or scoped
-/// with a closure (similar to [`thread::spawn`][spawn]).
-///
-/// # As an RAII-guard
-///
-/// The program is considered "in the playspace" from when the `Playspace` is
-/// constructed until it is dropped.
-///
-/// ```rust
-/// # use playspace::Playspace;
-/// # let path = std::path::Path::new("___playspace_test_file___.txt");
-/// // Start outside of the playspace
-/// assert!(std::env::var("__PLAYSPACE_ENVVAR").is_err());
-/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_ok());
-///
-/// let space = Playspace::with_envs([
-///     ("__PLAYSPACE_ENVVAR", Some("some value")),
-///     ("CARGO_MANIFEST_DIR", None),
-/// ]).expect("Probably already in a playspace");
-///
-/// // Now we're inside
-/// println!("Now in directory: {}", space.directory().display());
-///
-/// assert_eq!(std::env::var("__PLAYSPACE_ENVVAR").unwrap(), "some value");
-/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_err());
-///
-/// drop(space);
-/// // Now we're back outside
-///
-/// assert!(!path.exists());
-///
-/// assert!(std::env::var("__PLAYSPACE_ENVVAR").is_err());
-/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_ok());
-/// ```
+/// Preferred usage is "scoped" with a closure (similar to [`thread::spawn`][spawn]),
+/// but it can also be used as an RAII-guard if necessary (similar to [`MutexGuard`][MutexGuard],
+/// in which case it should be exited with [`exit()`][Playspace::exit]).
 ///
 /// # Scoped with a closure
 ///
-/// The program is in the Playspace only during the closure.
+/// The program is in the Playspace only during the closure and the Playspace is
+/// cleanly exited and any errors reported.
 ///
 /// ```rust
 /// # use playspace::Playspace;
@@ -151,12 +123,14 @@ use tempfile::{tempdir, TempDir};
 /// assert!(!path.exists());
 ///
 /// let path2 = path.clone();
-/// Playspace::scoped(move |space| {
+/// let result = Playspace::scoped(move |space| {
 ///     println!("Now in directory: {}", space.directory().display());
 ///
 ///     space.write_file(&path2, "file contents").unwrap();
 ///     assert_eq!(std::fs::read_to_string(&path2).unwrap(), "file contents");
-/// }).unwrap();
+/// });
+///
+/// // ... handle any errors ...
 ///
 /// assert!(!path.exists());
 /// ```
@@ -192,23 +166,68 @@ use tempfile::{tempdir, TempDir};
 /// assert!(!path.exists());
 /// ```
 ///
+/// # As an RAII-guard
+///
+/// While the `scoped*` methods should be preferred most of the time in both
+/// async and non-async code, it is also possible to construct the `Playspace`
+/// object directly. The program is considered "in the Playspace" from when the
+/// `Playspace` is constructed until it is dropped.
+///
+/// It is strongly advised that you manually destroy the `Playspace` with
+/// [`exit()`][Playspace::exit] so that any errors exiting the Playspace can be
+/// reported. The `Drop` implementation will exit the Playspace, but any errors
+/// doing so will be silently swallowed.
+///
+/// ```rust
+/// # use playspace::Playspace;
+/// # let path = std::path::Path::new("___playspace_test_file___.txt");
+/// // Start outside of the playspace
+/// assert!(std::env::var("__PLAYSPACE_ENVVAR").is_err());
+/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_ok());
+///
+/// let space = Playspace::with_envs([
+///     ("__PLAYSPACE_ENVVAR", Some("some value")),
+///     ("CARGO_MANIFEST_DIR", None),
+/// ]).expect("Probably already in a playspace");
+///
+/// // Now we're inside
+/// println!("Now in directory: {}", space.directory().display());
+///
+/// assert_eq!(std::env::var("__PLAYSPACE_ENVVAR").unwrap(), "some value");
+/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_err());
+///
+/// if let Err(exit_error) = space.exit() {
+///     // ... handle errors ...
+/// }
+///
+/// // Now we're back outside
+/// assert!(!path.exists());
+///
+/// assert!(std::env::var("__PLAYSPACE_ENVVAR").is_err());
+/// assert!(std::env::var("CARGO_MANIFEST_DIR").is_ok());
+/// ```
+///
 /// [MutexGuard]: std::sync::MutexGuard
 /// [spawn]: std::thread::spawn
 pub struct Playspace {
-    _lock: Lock, // NB. for drop order this MUST appear first
-    saved_current_dir: Option<PathBuf>,
+    // N.B. field order matters! See `exit_internal`
     saved_environment: HashMap<OsString, OsString>,
-    directory: TempDir,
+    saved_current_dir: Option<PathBuf>,
+    directory: ManuallyDrop<TempDir>,
+    lock: ManuallyDrop<Lock>,
 }
 
 assert_impl_all!(Playspace: Send);
 
 impl Playspace {
-    /// Create a `Playspace` available _only_ scoped within the given closure.
+    /// Preferred way to use a `Playspace` in non-async code.
     ///
-    /// Takes a closure, which accepts a `&mut Playspace`. Returns whatever the
-    /// closure returns. The semantics of Playspace construction are the same
-    /// as [`new`][Playspace::new].
+    /// Takes a closure, which accepts a `&mut Playspace`. Enters a new
+    /// playspace, executes the closure, and exits the Playspace cleanly.
+    /// Returns whatever the closure returns. The semantics of Playspace
+    /// construction are the same as [`new`][Playspace::new].
+    ///
+    /// In async code, use [`scoped_async`][Playspace::scoped_async].
     ///
     /// # Blocks
     ///
@@ -217,7 +236,9 @@ impl Playspace {
     ///
     /// # Errors
     ///
-    /// Returns any system errors in creating or changing the current directory.
+    /// Returns [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
     ///
     /// # Example
     ///
@@ -233,12 +254,54 @@ impl Playspace {
         F: FnOnce(&mut Self) -> R,
     {
         let mut space = Self::new()?;
+        let out = f(&mut space);
+        space.exit()?;
 
-        Ok(f(&mut space))
+        Ok(out)
+    }
+
+    /// A scoped Playspace that doesn't block if already in one.
+    ///
+    /// Behaves exactly like [`scoped`][Playspace::scoped], but never blocks and
+    /// already being in a Playspace is an error.
+    ///
+    /// In async code, use [`try_scoped_async`][Playspace::try_scoped_async].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpaceError::AlreadyInSpace`] if already in a Playspace,
+    /// [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace; use playspace::SpaceError::AlreadyInSpace;
+    /// match Playspace::try_scoped(|space| {
+    ///     space.write_file("some_file.txt", "file contents");
+    ///     std::fs::read_to_string("some_file.txt").unwrap()
+    /// }) {
+    ///     Err(AlreadyInSpace) => { /* already in a playspace */ },
+    ///     Err(_) => { /* another error */ },
+    ///     Ok(file_contents) => { /* success */ },
+    /// }
+    /// ```
+    pub fn try_scoped<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let mut space = Self::try_new()?;
+        let out = f(&mut space);
+        space.exit()?;
+
+        Ok(out)
     }
 
     /// Convenience combination of [`scoped`][Playspace::scoped] with implicit
     /// [`set_envs`][Playspace::set_envs].
+    ///
+    /// In async code, use [`scoped_with_envs_async`][Playspace::scoped_with_envs_async].
     #[allow(clippy::missing_errors_doc)]
     pub fn scoped_with_envs<I, K, V, R, F>(vars: I, f: F) -> Result<R, SpaceError>
     where
@@ -248,11 +311,17 @@ impl Playspace {
         F: FnOnce(&mut Self) -> R,
     {
         let mut space = Self::with_envs(vars)?;
+        let out = f(&mut space);
+        space.exit()?;
 
-        Ok(f(&mut space))
+        Ok(out)
     }
 
-    /// Create a `Playspace` for use as an RAII-guard.
+    /// Create a `Playspace` for use as an RAII-guard. Prefer
+    /// [`scoped`][Playspace::scoped] where possible.
+    ///
+    /// You should destroy a Playspace created this way manually by calling
+    /// [`exit`][Playspace::exit] to be able to handle errors during exiting.
     ///
     /// # Blocks
     ///
@@ -261,7 +330,8 @@ impl Playspace {
     ///
     /// # Errors
     ///
-    /// Returns any system errors in creating or changing the current directory.
+    /// Returns [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace.
     ///
     /// # Example
     ///
@@ -270,13 +340,18 @@ impl Playspace {
     /// let space = Playspace::new().unwrap();
     /// // let space2 = Playspace::new();  // <-- This would deadlock
     /// let space2 = Playspace::try_new(); // <-- This will be an error, but not deadlock
+    /// // Cleanly exit and handle any errors
+    /// let exit_result = space.exit();
     /// ```
     pub fn new() -> Result<Self, SpaceError> {
         Ok(Self::from_lock(blocking_lock())?)
     }
 
     /// Convenience combination of [`new`][Playspace::new] followed by
-    /// [`set_envs`][Playspace::set_envs].
+    /// [`set_envs`][Playspace::set_envs]. Prefer [`scoped_with_envs`][Playspace::scoped_with_envs]
+    /// where possible.
+    ///
+    /// In async code, use [`with_envs_async`][Playspace::with_envs_async].
     #[allow(clippy::missing_errors_doc)]
     pub fn with_envs<I, K, V>(vars: I) -> Result<Self, SpaceError>
     where
@@ -290,13 +365,15 @@ impl Playspace {
     }
 
     /// Create a `Playspace` for use as an RAII-guard, do not block if already
-    /// in a Playspace.
+    /// in a Playspace. Prefer [`try_scoped`][Playspace::try_scoped] or
+    /// [`try_scoped_async`][Playspace::try_scoped] where possible.
     ///
     /// # Errors
     ///
-    /// Returns any system errors in creating or changing the current directory.
-    /// Returns [`AlreadyInSpace`][crate::SpaceError::AlreadyInSpace] if
-    /// process is already in a Playspace.
+    /// Returns [`SpaceError::AlreadyInSpace`] if already in a Playspace,
+    /// [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
     ///
     /// # Example
     ///
@@ -305,6 +382,8 @@ impl Playspace {
     /// let space = Playspace::try_new().unwrap();
     /// // let space2 = Playspace::new();  // <-- This would deadlock
     /// let space2 = Playspace::try_new(); // <-- This will be an error, but not deadlock
+    /// // Cleanly exit and handle any errors
+    /// let exit_result = space.exit();
     /// ```
     pub fn try_new() -> Result<Self, SpaceError> {
         let lock = try_lock().ok_or(SpaceError::AlreadyInSpace)?;
@@ -312,16 +391,22 @@ impl Playspace {
     }
 
     fn from_lock(lock: Lock) -> Result<Self, std::io::Error> {
-        let out = Self {
-            _lock: lock,
-            directory: tempdir()?,
-            saved_current_dir: std::env::current_dir().ok(),
-            saved_environment: std::env::vars_os().collect(),
-        };
+        // Lock has been taken, good.
+        // Then save the environment and dir, since they're infallibe
+        let saved_environment = std::env::vars_os().collect();
+        let saved_current_dir = std::env::current_dir().ok();
+        // This is safe to fail, no cleanup
+        let directory = tempdir()?;
 
-        std::env::set_current_dir(out.directory())?;
+        // This is safe to fail, no cleanup required
+        std::env::set_current_dir(directory.path())?;
 
-        Ok(out)
+        Ok(Self {
+            lock: ManuallyDrop::new(lock),
+            directory: ManuallyDrop::new(directory),
+            saved_environment,
+            saved_current_dir,
+        })
     }
 
     /// Returns path to the directory root of the Playspace.
@@ -330,13 +415,14 @@ impl Playspace {
     ///
     /// ```rust
     /// # use playspace::Playspace;
-    /// let space = Playspace::new().unwrap();
-    /// let spaced = space.directory();
-    /// let canonical = spaced.canonicalize().unwrap();
-    /// let temp_canonical = std::env::temp_dir()
-    ///     .canonicalize()
-    ///     .unwrap();
-    /// assert!(canonical.starts_with(temp_canonical));
+    /// Playspace::scoped(|space| {
+    ///     let spaced = space.directory();
+    ///     let canonical = spaced.canonicalize().unwrap();
+    ///     let temp_canonical = std::env::temp_dir()
+    ///         .canonicalize()
+    ///         .unwrap();
+    ///     assert!(canonical.starts_with(temp_canonical));
+    /// }).unwrap();
     /// ```
     #[allow(clippy::must_use_candidate)]
     pub fn directory(&self) -> &Path {
@@ -355,11 +441,12 @@ impl Playspace {
     ///
     /// ```rust
     /// # use playspace::Playspace;
-    /// let space = Playspace::new().unwrap();
-    /// space.set_envs([
-    ///     ("PRESENT", Some("present_value")),
-    ///     ("ABSENT", None),
-    /// ]);
+    /// Playspace::scoped(|space| {
+    ///     space.set_envs([
+    ///         ("PRESENT", Some("present_value")),
+    ///         ("ABSENT", None),
+    ///     ]);
+    /// }).unwrap();
     /// ```
     #[allow(clippy::unused_self)]
     pub fn set_envs<I, K, V>(&self, vars: I)
@@ -392,8 +479,9 @@ impl Playspace {
     ///
     /// ```rust
     /// # use playspace::Playspace;
-    /// let space = Playspace::new().unwrap();
-    /// space.write_file("some_file.txt", "some file contents").unwrap();
+    /// Playspace::scoped(|space| {
+    ///     space.write_file("some_file.txt", "some file contents").unwrap();
+    /// }).unwrap();
     /// ```
     pub fn write_file<P, C>(&self, path: P, contents: C) -> Result<(), WriteError>
     where
@@ -421,8 +509,9 @@ impl Playspace {
     ///
     /// ```rust
     /// # use playspace::Playspace;
-    /// let space = Playspace::new().unwrap();
-    /// let file = space.create_file("some_file.txt").unwrap();
+    /// Playspace::scoped(|space| {
+    ///     let file = space.create_file("some_file.txt").unwrap();
+    /// }).unwrap();
     /// ```
     pub fn create_file(&self, path: impl AsRef<Path>) -> Result<File, WriteError> {
         let path = self.playspace_path(path)?;
@@ -445,8 +534,9 @@ impl Playspace {
     ///
     /// ```rust
     /// # use playspace::Playspace;
-    /// let space = Playspace::new().unwrap();
-    /// space.create_dir_all("some/non/existent/dirs").unwrap();
+    /// Playspace::scoped(|space| {
+    ///     space.create_dir_all("some/non/existent/dirs").unwrap();
+    /// }).unwrap();
     /// ```
     pub fn create_dir_all(&self, path: impl AsRef<Path>) -> Result<(), WriteError> {
         let path = self.playspace_path(path)?;
@@ -476,9 +566,74 @@ impl Playspace {
         }
     }
 
-    fn restore_directory(&self) {
-        if let Some(working_dir) = &self.saved_current_dir {
-            let _result = std::env::set_current_dir(working_dir);
+    /// Leave the Playspace cleanly, reporting any errors doing so. Preferred
+    /// explicit destructor over simply allowing `drop()` to be called.
+    ///
+    /// # Errors
+    ///
+    /// Returns any errors in either returning to the previous working directory
+    /// or removing the temporary Playspace directory. Always attempts both
+    /// operations and will report both errors if both fail.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace;
+    /// {
+    ///     let space = Playspace::new().unwrap();
+    ///
+    ///     // ... use the Playspace ...
+    ///
+    ///     // If this is omitted, then any errors exiting the Playspace would
+    ///     // be silently ignored in `drop()`.
+    ///     if let Err(error) = space.exit() {
+    ///         // handle the error
+    ///     }
+    /// }
+    /// ```
+    pub fn exit(mut self) -> Result<(), ExitError> {
+        let result = unsafe { self.exit_internal() };
+
+        // At this point, no fields own heap memory or has been manually
+        // dropped, so we can prevent `drop` from being called again
+        std::mem::forget(self);
+
+        result
+    }
+
+    unsafe fn exit_internal(&mut self) -> Result<(), ExitError> {
+        // Infallible, do this first
+        self.restore_environment();
+        drop(std::mem::take(&mut self.saved_environment));
+
+        let saved_current_dir = self.saved_current_dir.take();
+        let working_dir_result = Self::restore_directory(saved_current_dir);
+
+        let temp_dir_result = ManuallyDrop::take(&mut self.directory).close();
+
+        // This must be done last
+        drop(ManuallyDrop::take(&mut self.lock));
+
+        match working_dir_result {
+            Ok(()) => match temp_dir_result {
+                Ok(()) => Ok(()),
+                Err(temp) => Err(ExitError::TempDirRemoveFailed { source: temp }),
+            },
+            Err(working) => Err(ExitError::WorkingDirChangeFailed {
+                source: working,
+                temp_dir: temp_dir_result.err(),
+            }),
+        }
+    }
+
+    fn restore_directory(saved_current_dir: Option<PathBuf>) -> Result<(), std::io::Error> {
+        if let Some(working_dir) = saved_current_dir {
+            std::env::set_current_dir(working_dir)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "no previous working directory",
+            ))
         }
     }
 
@@ -498,9 +653,10 @@ impl Playspace {
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 impl Playspace {
-    /// Async version of [`scoped`][Playspace::scoped].
+    /// Preferred way to use a `Playspace` in async code. Async version of
+    /// [`scoped`][Playspace::scoped].
     ///
-    /// The "closure" should be of the form `|space| { async move {}.boxed() }`
+    /// The "closure" should be of the form `|space| { async move { /* code */ }.boxed() }`
     /// -- where `boxed()` is from [`futures::FutureExt`](https://docs.rs/futures/latest/futures/future/trait.FutureExt.html) --
     /// because of [this](https://stackoverflow.com/a/70539457) syntax issue.
     ///
@@ -511,7 +667,9 @@ impl Playspace {
     ///
     /// # Errors
     ///
-    /// Returns any system errors in creating or changing the current directory.
+    /// Returns [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
     ///
     /// # Example
     ///
@@ -531,7 +689,51 @@ impl Playspace {
         F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
     {
         let mut space = Self::new_async().await?;
-        Ok(f(&mut space).await)
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
+    }
+
+    /// An async-scoped Playspace that doesn't wait if already in one. Async
+    /// version of [`try_scoped`][Playspace::try_scoped].
+    ///
+    /// Behaves exactly like [`scoped_async`][Playspace::scoped_async], but
+    /// never waits and already being in a Playspace is an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpaceError::AlreadyInSpace`] if already in a Playspace,
+    /// [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace, or [`SpaceError::ExitError`] for errors when
+    /// exiting the Playspace.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace; use playspace::SpaceError::AlreadyInSpace; use futures::FutureExt;
+    /// # async {
+    /// match Playspace::try_scoped_async(|space| {
+    ///     async {
+    ///         space.write_file("some_file.txt", "file contents");
+    ///         std::fs::read_to_string("some_file.txt").unwrap()
+    ///     }.boxed()
+    /// }).await {
+    ///     Err(AlreadyInSpace) => { /* already in a playspace */ },
+    ///     Err(_) => { /* another error */ },
+    ///     Ok(file_contents) => { /* success */ },
+    /// }
+    /// # };
+    /// ```
+    pub async fn try_scoped_async<R, F>(f: F) -> Result<R, SpaceError>
+    where
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
+    {
+        let mut space = Self::try_new()?;
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
     }
 
     /// Convenience combination of [`scoped_async`][Playspace::scoped_async]
@@ -542,13 +744,17 @@ impl Playspace {
         I: IntoIterator<Item = (K, Option<V>)>,
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
-        F: FnOnce(&mut Self) -> R,
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
     {
         let mut space = Self::with_envs_async(vars).await?;
-        Ok(f(&mut space))
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
     }
 
-    /// Async version of [`new`][Playspace::new].
+    /// Async version of [`new`][Playspace::new]. Prefer
+    /// [`scoped_async`][Playspace::scoped_async] where possible.
     ///
     /// # Waits
     ///
@@ -557,7 +763,8 @@ impl Playspace {
     ///
     /// # Errors
     ///
-    /// Returns any system errors in creating or changing the current directory.
+    /// Returns [`SpaceError::StdIo`] if there were any system IO errors
+    /// entering the Playspace.
     ///
     /// # Example
     ///
@@ -567,6 +774,8 @@ impl Playspace {
     /// let space = Playspace::new_async().await.unwrap();
     /// // let space2 = Playspace::new().await;  // <-- This would livelock
     /// let space2 = Playspace::try_new();       // <-- This will be an error, but not livelock
+    /// // Cleanly exit and handle any errors
+    /// let exit_result = space.exit();
     /// # };
     /// ```
     pub async fn new_async() -> Result<Self, SpaceError> {
@@ -574,7 +783,8 @@ impl Playspace {
     }
 
     /// Convenience combination of [`new_async`][Playspace::new_async] followed
-    /// by [`set_envs`][Playspace::set_envs].
+    /// by [`set_envs`][Playspace::set_envs]. Prefer [`scoped_with_envs_async`][Playspace::scoped_with_envs_async]
+    /// where possible.
     #[allow(clippy::missing_errors_doc)]
     pub async fn with_envs_async<I, K, V>(vars: I) -> Result<Self, SpaceError>
     where
@@ -590,8 +800,7 @@ impl Playspace {
 
 impl Drop for Playspace {
     fn drop(&mut self) {
-        self.restore_directory();
-        self.restore_environment();
+        let _result = unsafe { self.exit_internal() };
     }
 }
 
@@ -600,8 +809,10 @@ impl Drop for Playspace {
 pub enum SpaceError {
     /// Attempted to create a (Async)Playspace while already in a (Async)Playspace.
     /// Creating either flavour while any other space exists is an error.
-    #[error("Already in a Playspace")]
+    #[error("already in a Playspace")]
     AlreadyInSpace,
+    #[error("error exiting Playspace")]
+    ExitError(#[from] ExitError),
     /// A bubbled-up error from [`std::io`] functions.
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
@@ -612,9 +823,42 @@ pub enum SpaceError {
 pub enum WriteError {
     /// Attempted to write to a directory outside of the (Async)Playspace.
     /// The inner value is the path that was attempted to write to.
-    #[error("Attempt to write outside Playspace: {0}")]
+    #[error("attempt to write outside Playspace ({0})")]
     OutsidePlayspace(PathBuf),
     /// A bubbled-up error from [`std::io`] functions.
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
+}
+
+#[derive(Debug)]
+pub enum ExitError {
+    WorkingDirChangeFailed {
+        source: std::io::Error,
+        temp_dir: Option<std::io::Error>,
+    },
+    TempDirRemoveFailed {
+        source: std::io::Error,
+    },
+}
+
+impl Display for ExitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WorkingDirChangeFailed { temp_dir, .. } => match temp_dir {
+                None => write!(f, "could not change working directory"),
+                Some(temp) => write!(f, "could not change working directory and also encoutered an error removing temporary directory ({})", temp)
+            },
+            Self::TempDirRemoveFailed { .. } => write!(f, "could not remove temporary directory"),
+        }
+    }
+}
+
+impl std::error::Error for ExitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::WorkingDirChangeFailed { source, .. } | Self::TempDirRemoveFailed { source } => {
+                source
+            }
+        })
+    }
 }

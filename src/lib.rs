@@ -627,7 +627,7 @@ impl Playspace {
     }
 
     fn restore_directory(saved_current_dir: Option<PathBuf>) -> Result<(), std::io::Error> {
-        if let Some(working_dir) = saved_current_dir.take() {
+        if let Some(working_dir) = saved_current_dir {
             std::env::set_current_dir(working_dir)
         } else {
             Err(std::io::Error::new(

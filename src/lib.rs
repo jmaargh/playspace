@@ -90,7 +90,9 @@
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
+    fmt::Display,
     fs::File,
+    mem::ManuallyDrop,
     path::{Path, PathBuf},
 };
 #[cfg(feature = "async")]
@@ -195,10 +197,11 @@ use tempfile::{tempdir, TempDir};
 /// [MutexGuard]: std::sync::MutexGuard
 /// [spawn]: std::thread::spawn
 pub struct Playspace {
-    _lock: Lock, // NB. for drop order this MUST appear first
-    saved_current_dir: Option<PathBuf>,
+    // N.B. field order matters! See `exit_internal`
     saved_environment: HashMap<OsString, OsString>,
-    directory: TempDir,
+    saved_current_dir: Option<PathBuf>,
+    directory: ManuallyDrop<TempDir>,
+    lock: ManuallyDrop<Lock>,
 }
 
 assert_impl_all!(Playspace: Send);
@@ -233,8 +236,10 @@ impl Playspace {
         F: FnOnce(&mut Self) -> R,
     {
         let mut space = Self::new()?;
+        let out = f(&mut space);
+        space.exit()?;
 
-        Ok(f(&mut space))
+        Ok(out)
     }
 
     /// Convenience combination of [`scoped`][Playspace::scoped] with implicit
@@ -248,8 +253,10 @@ impl Playspace {
         F: FnOnce(&mut Self) -> R,
     {
         let mut space = Self::with_envs(vars)?;
+        let out = f(&mut space);
+        space.exit()?;
 
-        Ok(f(&mut space))
+        Ok(out)
     }
 
     /// Create a `Playspace` for use as an RAII-guard.
@@ -312,16 +319,22 @@ impl Playspace {
     }
 
     fn from_lock(lock: Lock) -> Result<Self, std::io::Error> {
-        let out = Self {
-            _lock: lock,
-            directory: tempdir()?,
-            saved_current_dir: std::env::current_dir().ok(),
-            saved_environment: std::env::vars_os().collect(),
-        };
+        // Lock has been taken, good.
+        // Then save the environment and dir, since they're infallibe
+        let saved_environment = std::env::vars_os().collect();
+        let saved_current_dir = std::env::current_dir().ok();
+        // This is safe to fail, no cleanup
+        let directory = tempdir()?;
 
-        std::env::set_current_dir(out.directory())?;
+        // This is safe to fail, no cleanup required
+        std::env::set_current_dir(directory.path())?;
 
-        Ok(out)
+        Ok(Self {
+            lock: ManuallyDrop::new(lock),
+            directory: ManuallyDrop::new(directory),
+            saved_environment,
+            saved_current_dir,
+        })
     }
 
     /// Returns path to the directory root of the Playspace.
@@ -476,9 +489,74 @@ impl Playspace {
         }
     }
 
-    fn restore_directory(&self) {
-        if let Some(working_dir) = &self.saved_current_dir {
-            let _result = std::env::set_current_dir(working_dir);
+    /// Leave the Playspace cleanly, reporting any errors doing so. Preferred
+    /// explicit destructor over simply allowing `drop()` to be called.
+    ///
+    /// # Errors
+    ///
+    /// Returns any errors in either returning to the previous working directory
+    /// or removing the temporary Playspace directory. Always attempts both
+    /// operations and will report both errors if both fail.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use playspace::Playspace;
+    /// {
+    ///     let space = Playspace::new().unwrap();
+    ///
+    ///     // ... use the Playspace ...
+    ///
+    ///     // If this is omitted, then any errors exiting the Playspace would
+    ///     // be silently ignored in `drop()`.
+    ///     if let Err(error) = space.exit() {
+    ///         // handle the error
+    ///     }
+    /// }
+    /// ```
+    pub fn exit(mut self) -> Result<(), ExitError> {
+        let result = unsafe { self.exit_internal() };
+
+        // At this point, no fields own heap memory or has been manually
+        // dropped, so we can prevent `drop` from being called again
+        std::mem::forget(self);
+
+        result
+    }
+
+    unsafe fn exit_internal(&mut self) -> Result<(), ExitError> {
+        // Infallible, do this first
+        self.restore_environment();
+        drop(std::mem::take(&mut self.saved_environment));
+
+        let saved_current_dir = self.saved_current_dir.take();
+        let working_dir_result = Self::restore_directory(saved_current_dir);
+
+        let temp_dir_result = ManuallyDrop::take(&mut self.directory).close();
+
+        // This must be done last
+        drop(ManuallyDrop::take(&mut self.lock));
+
+        match working_dir_result {
+            Ok(()) => match temp_dir_result {
+                Ok(()) => Ok(()),
+                Err(temp) => Err(ExitError::TempDirRemoveFailed { source: temp }),
+            },
+            Err(working) => Err(ExitError::WorkingDirChangeFailed {
+                source: working,
+                temp_dir: temp_dir_result.err(),
+            }),
+        }
+    }
+
+    fn restore_directory(saved_current_dir: Option<PathBuf>) -> Result<(), std::io::Error> {
+        if let Some(working_dir) = saved_current_dir.take() {
+            std::env::set_current_dir(working_dir)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "no previous working directory",
+            ))
         }
     }
 
@@ -531,7 +609,10 @@ impl Playspace {
         F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
     {
         let mut space = Self::new_async().await?;
-        Ok(f(&mut space).await)
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
     }
 
     /// Convenience combination of [`scoped_async`][Playspace::scoped_async]
@@ -545,7 +626,10 @@ impl Playspace {
         F: FnOnce(&mut Self) -> R,
     {
         let mut space = Self::with_envs_async(vars).await?;
-        Ok(f(&mut space))
+        let out = f(&mut space).await;
+        space.exit()?;
+
+        Ok(out)
     }
 
     /// Async version of [`new`][Playspace::new].
@@ -590,8 +674,7 @@ impl Playspace {
 
 impl Drop for Playspace {
     fn drop(&mut self) {
-        self.restore_directory();
-        self.restore_environment();
+        let _result = unsafe { self.exit_internal() };
     }
 }
 
@@ -600,8 +683,10 @@ impl Drop for Playspace {
 pub enum SpaceError {
     /// Attempted to create a (Async)Playspace while already in a (Async)Playspace.
     /// Creating either flavour while any other space exists is an error.
-    #[error("Already in a Playspace")]
+    #[error("already in a Playspace")]
     AlreadyInSpace,
+    #[error("error exiting Playspace")]
+    ExitError(#[from] ExitError),
     /// A bubbled-up error from [`std::io`] functions.
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
@@ -612,9 +697,42 @@ pub enum SpaceError {
 pub enum WriteError {
     /// Attempted to write to a directory outside of the (Async)Playspace.
     /// The inner value is the path that was attempted to write to.
-    #[error("Attempt to write outside Playspace: {0}")]
+    #[error("attempt to write outside Playspace ({0})")]
     OutsidePlayspace(PathBuf),
     /// A bubbled-up error from [`std::io`] functions.
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
+}
+
+#[derive(Debug)]
+pub enum ExitError {
+    WorkingDirChangeFailed {
+        source: std::io::Error,
+        temp_dir: Option<std::io::Error>,
+    },
+    TempDirRemoveFailed {
+        source: std::io::Error,
+    },
+}
+
+impl Display for ExitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WorkingDirChangeFailed { temp_dir, .. } => match temp_dir {
+                None => write!(f, "could not change working directory"),
+                Some(temp) => write!(f, "could not change working directory and also encoutered an error removing temporary directory ({})", temp)
+            },
+            Self::TempDirRemoveFailed { .. } => write!(f, "could not remove temporary directory"),
+        }
+    }
+}
+
+impl std::error::Error for ExitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::WorkingDirChangeFailed { source, .. } | Self::TempDirRemoveFailed { source } => {
+                source
+            }
+        })
+    }
 }

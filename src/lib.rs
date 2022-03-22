@@ -744,7 +744,7 @@ impl Playspace {
         I: IntoIterator<Item = (K, Option<V>)>,
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
-        F: FnOnce(&mut Self) -> R,
+        F: for<'a> FnOnce(&'a mut Self) -> Pin<Box<dyn Future<Output = R> + 'a>>,
     {
         let mut space = Self::with_envs_async(vars).await?;
         let out = f(&mut space).await;

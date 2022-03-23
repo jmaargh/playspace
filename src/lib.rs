@@ -609,6 +609,8 @@ impl Playspace {
         let saved_current_dir = self.saved_current_dir.take();
         let working_dir_result = Self::restore_directory(saved_current_dir);
 
+        // N.B. `ManuallyDrop::take` makes a bitwise copy, but since `directory` only
+        // contains a `Box` this is fine.
         let temp_dir_result = ManuallyDrop::take(&mut self.directory).close();
 
         // This must be done last

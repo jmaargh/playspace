@@ -612,7 +612,7 @@ impl Playspace {
         let temp_dir_result = ManuallyDrop::take(&mut self.directory).close();
 
         // This must be done last
-        drop(ManuallyDrop::take(&mut self.lock));
+        ManuallyDrop::drop(&mut self.lock);
 
         match working_dir_result {
             Ok(()) => match temp_dir_result {
